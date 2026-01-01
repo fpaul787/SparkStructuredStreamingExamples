@@ -51,16 +51,68 @@ df = (spark.readStream
 
 # COMMAND ----------
 
-df = df.selectExpr("CAST(value AS STRING)")
-display(df)
-
-# COMMAND ----------
-
 from pyspark.sql.functions import col, from_json
-# convert to schema
-df = df.select(from_json(col("value"), car_purchase_schema).alias("purchase")).select("purchase.*")
-display(df)
+parsed_df = df \
+    .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)") \
+    .select(
+        col("key").alias("transactionId_key"),
+        from_json(col("value"), car_purchase_schema).alias("purchase")
+    ) \
+    .select("transactionId_key", "purchase.*")
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### Continuously processes data
+# MAGIC
+# MAGIC Databricks does stuff behind the scenes with the `display` function
+# MAGIC that starts the streaming query and attaching a temporary sink.
+# MAGIC
+# MAGIC So display(df) is conceptually similar to 
+# MAGIC ```
+# MAGIC df.writeStream
+# MAGIC   .format("memory")      # or internal sink
+# MAGIC   .trigger(processingTime="5 seconds")
+# MAGIC   .start()
+# MAGIC
+# MAGIC ```
 
+# COMMAND ----------
+
+display(parsed_df)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### trigger (once or availableNow)
+# MAGIC
+# MAGIC The query processes all available data and then stops.
+
+# COMMAND ----------
+
+query = (
+    parsed_df.writeStream
+        .format("console")
+        .trigger(availableNow=True)
+        .start()
+)
+
+# COMMAND ----------
+
+display(parsed_df)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### ProcessingTime (Fixed interval micro-batching)
+# MAGIC
+# MAGIC Queries runs at fixed intervals.
+
+# COMMAND ----------
+
+query = (
+    parsed_df.writeStream
+        .format("console")
+        .trigger(processingTime='5 seconds')
+        .start()
+)
